@@ -1,20 +1,22 @@
 # scraper/website_finder.py
 
-import requests
-from urllib.parse import urlencode
+import openai
 
 def find_district_website(district_name):
     """
-    Construct a Google search URL for the district's official website.
-    Replace with a real API integration or scraper in production.
-
-    Args:
-        district_name (str): Full name of the school district.
-
-    Returns:
-        str: URL to perform the search.
+    Ask ChatGPT for the official website URL of `district_name`.
+    Returns the URL string.
     """
-    query = f"{district_name} official website"
-    search_url = f"https://www.google.com/search?{urlencode({'q': query})}"
-    return search_url
+    prompt = (
+        f"What's the official homepage URL of the school district named {district_name!r}? "
+        "Respond with only the URL (e.g. https://www.example.k12.state.us)."
+    )
 
+    resp = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You answer with exactly one URL, nothing else."},
+            {"role": "user",   "content": prompt}
+        ]
+    )
+    return resp.choices[0].message.content.strip()
