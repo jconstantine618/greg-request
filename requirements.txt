@@ -1,0 +1,7 @@
+streamlit
+openai             # or langchain for LLM orchestration
+requests
+beautifulsoup4
+pandas
+rapidfuzz          # for fuzzy district matching
+python-Levenshtein # optional speedup for RapidFuzz
