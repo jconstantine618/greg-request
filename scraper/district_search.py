@@ -1,37 +1,30 @@
 # scraper/district_search.py
 
-from rapidfuzz import process
+import openai
+import json
 
-# TODO: Replace with actual data source (e.g., NCES CSV or provincial API)
-DISTRICTS = {
-    "California": [
-        "Los Angeles Unified School District",
-        "San Diego Unified School District",
-        "San Francisco Unified School District",
-    ],
-    "Ontario": [
-        "Toronto District School Board",
-        "Peel District School Board",
-        "Ottawa-Carleton District School Board",
-    ],
-}
-
-def search_districts(state, query, limit=5, threshold=75):
+def search_districts(state, query):
     """
-    Fuzzy search for school districts in a given state or province.
-
-    Args:
-        state (str): Name of the state or province.
-        query (str): Partial or full district name to search.
-        limit (int): Max number of results to return.
-        threshold (int): Minimum matching score (0-100).
-
-    Returns:
-        List[str]: Matching district names.
+    Ask ChatGPT to list up to 5 school-district names in `state`
+    matching `query`. Returns a Python list of strings.
     """
-    districts = DISTRICTS.get(state, [])
-    if not districts:
-        return []
-    matches = process.extract(query, districts, limit=limit)
-    return [name for name, score, _ in matches if score >= threshold]
+    prompt = (
+        f"List up to 5 official school district names in {state!r} "
+        f"that closely match {query!r}. "
+        "Return **ONLY** a JSON array of strings, e.g. [\"Name A\", \"Name B\", ...]."
+    )
+
+    resp = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a JSON-only responder."},
+            {"role": "user",   "content": prompt}
+        ]
+    )
+    text = resp.choices[0].message.content.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Fallback: split on lines
+        return [line.strip(" -") for line in text.splitlines() if line.strip()]
 
