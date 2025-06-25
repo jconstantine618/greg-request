@@ -1,7 +1,8 @@
 streamlit
-openai             # or langchain for LLM orchestration
+openai
 requests
 beautifulsoup4
 pandas
-rapidfuzz          # for fuzzy district matching
-python-Levenshtein # optional speedup for RapidFuzz
+rapidfuzz
+python-Levenshtein
+nameparser
