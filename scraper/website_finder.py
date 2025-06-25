@@ -3,6 +3,9 @@
 import streamlit as st
 from openai import OpenAI
 import json
+import requests
+from scraper.school_list_scraper import get_school_list
+from scraper.principle_parser import parse_principal_info
 
 # Initialize OpenAI client with API key from Streamlit secrets
 client = OpenAI(api_key=st.secrets["openai_api_key"])
@@ -64,7 +67,32 @@ def scrape_principals_llm(district_url: str) -> list[dict]:
         ]
     )
     content = resp.choices[0].message.content.strip()
-    # Parse out any code fences
     if content.startswith("```json"):
         content = content.split("```json")[-1].strip().rstrip("```")
     return json.loads(content)
+
+
+def get_principals(district_url: str) -> list[dict]:
+    """
+    Attempt HTML scraping first; on failure, fallback to LLM scraping.
+
+    Args:
+        district_url (str): Base URL of the district's official site.
+
+    Returns:
+        List[dict]: List of principal info dicts.
+    """
+    try:
+        schools = get_school_list(district_url)
+        principals = []
+        for sch in schools:
+            try:
+                html = requests.get(sch['school_url'], timeout=10).text
+                info = parse_principal_info(html)
+                principals.append({'school_name': sch['school_name'], **info})
+            except Exception:
+                continue
+        return principals
+    except requests.exceptions.RequestException:
+        st.warning("Could not fetch school list; falling back to LLM-based scraping.")
+        return scrape_principals_llm(district_url)
