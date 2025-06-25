@@ -37,7 +37,8 @@ def find_district_website(district_name: str) -> str:
 
 def scrape_principals_llm(district_url: str) -> list[dict]:
     """
-    Use ChatGPT to extract principal contact info for each high school in the district.
+    Use ChatGPT to extract principal contact info for each high school in the district,
+    including fallback search across the web if details are missing.
 
     Args:
         district_url (str): Base URL of the district's official site.
@@ -47,17 +48,24 @@ def scrape_principals_llm(district_url: str) -> list[dict]:
             - school_name
             - first_name
             - last_name
-            - email
-            - phone
+            - email              # found on site
+            - generic_email      # generic district-level address
+            - assumed_email      # generated pattern-based email
+            - phone              # school-specific or district number
             - bio
             - notes
     """
     prompt = (
         f"Given the school district homepage URL: {district_url}, "
-        "locate the 'Our Schools' or 'Directory' section, then for each high school, "
-        "extract the principal's full name, email address, phone number, any brief bio, and pertinent notes. "
-        "Return a JSON array of objects with the following keys: "
-        "school_name, first_name, last_name, email, phone, bio, notes."
+        "first locate the 'Our Schools' or 'Directory' section and identify each high school. "
+        "For each high school principal, extract: full name, official email address (if on the site), "
+        "generic district-level email (e.g. info@…), "
+        "and phone number for that school or a main district line. "
+        "If an individual email isn't available, look at existing email patterns for the district "
+        "and generate an assumed email (e.g. first initial + last name@...). "
+        "Also capture any brief bio or pertinent notes (retirement, transitions, etc.). "
+        "Return a JSON array of objects with these exact keys: "
+        "school_name, first_name, last_name, email, generic_email, assumed_email, phone, bio, notes."
     )
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -67,6 +75,7 @@ def scrape_principals_llm(district_url: str) -> list[dict]:
         ]
     )
     content = resp.choices[0].message.content.strip()
+    # strip fences if present
     if content.startswith("```json"):
         content = content.split("```json")[-1].strip().rstrip("```")
     return json.loads(content)
@@ -74,24 +83,35 @@ def scrape_principals_llm(district_url: str) -> list[dict]:
 
 def get_principals(district_url: str) -> list[dict]:
     """
-    Attempt HTML scraping first; on failure, fallback to LLM scraping.
-
-    Args:
-        district_url (str): Base URL of the district's official site.
-
-    Returns:
-        List[dict]: List of principal info dicts.
+    Attempt HTML scraping first; on failure or missing fields, fallback to LLM scraping.
     """
+    principals = []
     try:
         schools = get_school_list(district_url)
-        principals = []
         for sch in schools:
             try:
                 html = requests.get(sch['school_url'], timeout=10).text
                 info = parse_principal_info(html)
-                principals.append({'school_name': sch['school_name'], **info})
+                # merge with new fields placeholder
+                principals.append({
+                    'school_name': sch['school_name'],
+                    'first_name': info.get('first_name'),
+                    'last_name': info.get('last_name'),
+                    'email': info.get('email'),
+                    'generic_email': info.get('generic_email'),
+                    'assumed_email': info.get('assumed_email'),
+                    'phone': info.get('phone'),
+                    'bio': info.get('bio'),
+                    'notes': info.get('notes'),
+                })
             except Exception:
                 continue
+        # if some principals lack email/phone, use LLM to fill
+        incomplete = [p for p in principals if not p.get('email') or not p.get('phone')]
+        if incomplete:
+            st.info("Some contact info missing; invoking fallback LLM enrichment.")
+            enriched = scrape_principals_llm(district_url)
+            return enriched
         return principals
     except requests.exceptions.RequestException:
         st.warning("Could not fetch school list; falling back to LLM-based scraping.")
