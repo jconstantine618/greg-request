@@ -13,11 +13,12 @@ from scraper.principle_parser import parse_principal_info
 # Initialize API key
 openai.api_key = st.secrets['openai_api_key']
 
-# Session defaults
+# Set up session defaults
 if 'districts' not in st.session_state:
     st.session_state['districts'] = []
 if 'directory_url' not in st.session_state:
     st.session_state['directory_url'] = ''
+
 
 def load_states():
     here = os.path.dirname(__file__)
@@ -25,44 +26,44 @@ def load_states():
     with open(path, 'r') as f:
         return json.load(f)
 
+# --- App starts here ---
 st.title('📚 School District Principal Scraper')
 st.write('Use ChatGPT to find your district, scrape every school page, and pull out principal contact info.')
 
 states_map = load_states()
 
 # Form 1: Search Districts
-with st.form('search_form'):
+with st.form(key='search_form'):
     country = st.selectbox('Country', list(states_map.keys()), key='form_country')
-    state   = st.selectbox('State/Province', states_map[country], key='form_state')
-    district_input = st.text_input('District name (fuzzy search)', key='form_query')
-    go = st.form_submit_button('Search Districts')
-    if go:
-        st.session_state['districts'] = search_districts(state, district_input)
+    state = st.selectbox('State/Province', states_map[country], key='form_state')
+    district_query = st.text_input('District name (fuzzy search)', key='form_query')
+    submit_search = st.form_submit_button('Search Districts', key='btn_search')
+    if submit_search:
+        st.session_state['districts'] = search_districts(state, district_query)
 
-# Show District choices if available
+# After search: choose district
 if st.session_state['districts']:
     st.write('### Select your district:')
-    # Form 2: Get Website
-    with st.form('website_form'):
+    with st.form(key='website_form'):
         district = st.selectbox('District', st.session_state['districts'], key='form_district')
-        go_url = st.form_submit_button('Find District Website')
-        if go_url:
+        submit_website = st.form_submit_button('Find District Website', key='btn_website')
+        if submit_website:
             st.session_state['directory_url'] = find_district_website(district)
 
-# Show website if found
+# Show website
 if st.session_state['directory_url']:
     st.markdown(f"**Official URL:** [{st.session_state['directory_url']}]({st.session_state['directory_url']})")
 
     # Form 3: Scrape Principals
-    with st.form('scrape_form'):
-        go_scrape = st.form_submit_button('Scrape Schools & Principals')
-        if go_scrape:
+    with st.form(key='scrape_form'):
+        submit_scrape = st.form_submit_button('Scrape Schools & Principals', key='btn_scrape')
+        if submit_scrape:
             schools = get_school_list(st.session_state['directory_url'])
-            rows = []
+            records = []
             for sch in schools:
                 html = requests.get(sch['school_url']).text
                 info = parse_principal_info(html)
-                rows.append({
+                records.append({
                     'School Name': sch['school_name'],
                     'Principal First Name': info.get('first_name'),
                     'Principal Last Name': info.get('last_name'),
@@ -71,7 +72,6 @@ if st.session_state['directory_url']:
                     'Bio': info.get('bio'),
                     'Notes': info.get('notes'),
                 })
-            df = pd.DataFrame(rows)
+            df = pd.DataFrame(records)
             st.dataframe(df)
-            st.download_button('Download CSV', data=df.to_csv(index=False), file_name='principals.csv', key='download_csv')
-
+            st.download_button('Download CSV', data=df.to_csv(index=False), file_name='principals.csv', key='btn_download')
